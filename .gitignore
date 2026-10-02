@@ -1,0 +1,37 @@
+# Build output
+/build/
+/out/
+*.o
+*.a
+*.so
+*.nro
+*.nacp
+*.elf
+
+# Recompiler output. This is a translation of the user's own game executable
+# and is regenerated locally; it must never be committed.
+/src/game/generated/
+*simpsons_recomp.*.cpp
+*_init.cpp
+src/game/simpsons_manifest.local.toml
+
+# Anything from a disc
+*.iso
+*.xiso
+*.img
+*.xex
+*.str
+*.snu
+*.vp6
+*.mus
+/extracted/
+/game/
+
+# A local install
+/saves/
+/logs/
+
+__pycache__/
+.DS_Store
+compile_commands.json
+/dist/

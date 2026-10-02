@@ -1,0 +1,72 @@
+diff --git a/src/nouveau/compiler/nak/opt_instr_sched_common.rs b/src/nouveau/compiler/nak/opt_instr_sched_common.rs
+index 2d8be486f6d..ae3e1241647 100644
+--- a/src/nouveau/compiler/nak/opt_instr_sched_common.rs
++++ b/src/nouveau/compiler/nak/opt_instr_sched_common.rs
+@@ -289,7 +289,15 @@ pub fn estimate_variable_latency(sm: &ShaderModelInfo, op: &Op) -> u32 {
+         | Op::Tld4(_)
+         | Op::Tmml(_)
+         | Op::Txd(_)
+-        | Op::Txq(_) => 32,
++        | Op::Txq(_) => {
++            // Tegra X1 (GM20B) shares LPDDR4 with the CPU: a texture miss
++            // costs hundreds of cycles, not 32. A larger estimate makes the
++            // pre-pass separate each fetch from its first use and keep more
++            // in flight. Only scheduling priority changes; the dependency
++            // barriers come from calc_instr_deps. From nfsmw-nx's Mesa patch
++            // (MIT).
++            if sm.sm() < 70 { 200 } else { 32 }
++        }
+ 
+         // Surface ops
+         Op::SuLd(_)
+@@ -314,7 +322,11 @@ pub fn estimate_variable_latency(sm: &ShaderModelInfo, op: &Op) -> u32 {
+         | Op::Ipa(_)
+         | Op::CCtl(_)
+         | Op::LdTram(_)
+-        | Op::MemBar(_) => 32,
++        | Op::MemBar(_) => {
++            // Global loads from the shared LPDDR4 likewise take far longer
++            // than 32 cycles on GM20B (see the texture ops above).
++            if sm.sm() < 70 { 200 } else { 32 }
++        }
+ 
+         // Control-flow ops
+         Op::WarpSync(_) => 16,
+diff --git a/src/nouveau/compiler/nak_nir.c b/src/nouveau/compiler/nak_nir.c
+index beb01b1d9db..b23fee112bb 100644
+--- a/src/nouveau/compiler/nak_nir.c
++++ b/src/nouveau/compiler/nak_nir.c
+@@ -203,8 +203,14 @@ nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak)
+       LOOP_OPT(nir, nir_opt_dce);
+       LOOP_OPT(nir, nir_opt_cse);
+ 
++      /* Before Volta NAK has no if-to-predicate pass, so every if that
++       * survives NIR is a real SSY/BRA/SYNC. Flatten small ones as ANV and
++       * RADV do (limit 8). From nfsmw-nx's Mesa patch (MIT); watch
++       * NVK_SHADER_STATS for local-memory spills if this ever raises register
++       * pressure too far.
++       */
+       nir_opt_peephole_select_options peephole_select_options = {
+-         .limit = 0,
++         .limit = nak->sm < 70 ? 8 : 0,
+          .discard_ok = true,
+       };
+       LOOP_OPT_NOT_IDEMPOTENT(nir, nir_opt_peephole_select,
+diff --git a/src/nouveau/vulkan/nvk_shader.c b/src/nouveau/vulkan/nvk_shader.c
+index e63104958c0..8428b92354f 100644
+--- a/src/nouveau/vulkan/nvk_shader.c
++++ b/src/nouveau/vulkan/nvk_shader.c
+@@ -83,6 +83,13 @@ nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev)
+       | (use_edb_buffer_views ? 1 << 13 : 0)
+       | (instance->drirc.misc.ssbo_align_4b ? 1 << 14 : 0)
+       | (UINT64_C(10) << 16) /* Compiler ABI revision. */
++#ifdef HAVE_SWITCH_PLATFORM
++      /* Revision of the Switch NAK scheduling changes. On Horizon the build
++       * id is the package version, so without this the pipeline cache kept
++       * serving binaries compiled before them. Bump with every NAK change.
++       */
++      | (UINT64_C(1) << 24)
++#endif
+       | (nak_flags << 48);
+ }
+ 

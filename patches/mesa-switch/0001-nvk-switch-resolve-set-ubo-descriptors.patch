@@ -1,0 +1,34 @@
+diff --git a/src/nouveau/vulkan/nvk_cmd_buffer.c b/src/nouveau/vulkan/nvk_cmd_buffer.c
+index 60ae745ace7..e4391eb3e31 100644
+--- a/src/nouveau/vulkan/nvk_cmd_buffer.c
++++ b/src/nouveau/vulkan/nvk_cmd_buffer.c
+@@ -1768,6 +1768,29 @@ nvk_cmd_buffer_get_cbuf_addr(struct nvk_cmd_buffer *cmd,
+    }
+ 
+    case NVK_CBUF_TYPE_UBO_DESC: {
++#ifdef HAVE_SWITCH_PLATFORM
++      /* Before Turing, a UBO whose descriptor is only in memory is bound by
++       * an MME macro reading an indirect GPFIFO segment: two GPFIFO entries
++       * and a no-prefetch front-end stall per binding. With ~1500 draws a
++       * frame that filled the 2048-entry GPFIFO, stalled every kickoff and
++       * finally lost the device. Unless the set allows update-after-bind,
++       * Vulkan forbids changing it while a command buffer using it may run,
++       * so the descriptor read now is the one the GPU would read.
++       */
++      if (desc->sets[cbuf->desc_set].type == NVK_DESCRIPTOR_SET_TYPE_SET) {
++         const struct nvk_descriptor_set *set = desc->sets[cbuf->desc_set].set;
++         if (set != NULL && set->map != NULL &&
++             !(set->layout->flags &
++               VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT) &&
++             cbuf->desc_offset + sizeof(union nvk_buffer_descriptor) <= set->size_B) {
++            union nvk_buffer_descriptor set_desc;
++            memcpy(&set_desc, (const char *)set->map + cbuf->desc_offset,
++                   sizeof(set_desc));
++            *addr_out = nvk_ubo_descriptor_addr(pdev, set_desc);
++            return true;
++         }
++      }
++#endif
+       if (desc->sets[cbuf->desc_set].type != NVK_DESCRIPTOR_SET_TYPE_PUSH)
+          return false;
+ 

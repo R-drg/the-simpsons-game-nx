@@ -1,0 +1,252 @@
+diff --git a/src/nouveau/vulkan/nvk_cmd_buffer.c b/src/nouveau/vulkan/nvk_cmd_buffer.c
+index e4391eb3e31..1b089a2cfc8 100644
+--- a/src/nouveau/vulkan/nvk_cmd_buffer.c
++++ b/src/nouveau/vulkan/nvk_cmd_buffer.c
+@@ -644,6 +644,9 @@ nvk_CmdExecuteCommands(VkCommandBuffer commandBuffer,
+                        const VkCommandBuffer *pCommandBuffers)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    if (commandBufferCount == 0)
+       return;
+diff --git a/src/nouveau/vulkan/nvk_cmd_buffer.h b/src/nouveau/vulkan/nvk_cmd_buffer.h
+index 0c6a5fd811b..268d83f8a86 100644
+--- a/src/nouveau/vulkan/nvk_cmd_buffer.h
++++ b/src/nouveau/vulkan/nvk_cmd_buffer.h
+@@ -223,6 +223,16 @@ struct nvk_graphics_state {
+    /* Used for meta save/restore */
+    VkDeviceAddressRangeKHR vb0;
+ 
++#ifdef HAVE_SWITCH_PLATFORM
++   /* Before Turing the draw macro writes the draw parameters (base vertex,
++    * base instance, draw and view index) into cb0 unconditionally, four
++    * constant buffer updates per draw. True when this command buffer's last
++    * draw left all of them zero, so a draw with zero parameters can skip the
++    * macro and its cb0 writes.
++    */
++   bool switch_draw_params_zero;
++#endif
++
+    /* Needed by vk_command_buffer::dynamic_graphics_state */
+    struct vk_vertex_input_state _dynamic_vi;
+    struct vk_sample_locations_state _dynamic_sl;
+diff --git a/src/nouveau/vulkan/nvk_cmd_draw.c b/src/nouveau/vulkan/nvk_cmd_draw.c
+index 0cbdd883a64..756dc69eccf 100644
+--- a/src/nouveau/vulkan/nvk_cmd_draw.c
++++ b/src/nouveau/vulkan/nvk_cmd_draw.c
+@@ -824,6 +824,10 @@ void
+ nvk_cmd_buffer_begin_graphics(struct nvk_cmd_buffer *cmd,
+                               const VkCommandBufferBeginInfo *pBeginInfo)
+ {
++#ifdef HAVE_SWITCH_PLATFORM
++   /* Whatever an earlier command buffer left in cb0 is unknown here. */
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+    const struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+    if (cmd->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY) {
+       struct nv_push *p = nvk_cmd_buffer_push(cmd, 9);
+@@ -4963,6 +4967,36 @@ nvk_mme_build_draw(struct mme_builder *b,
+       nvk_mme_unspill(b, DRAW_IDX, draw_index);
+ }
+ 
++#ifdef HAVE_SWITCH_PLATFORM
++/* A draw that can be issued without the draw macro: the parameters it would
++ * write are all zero and already are, and there is no multiview loop.  The
++ * nouveau GL driver issues direct draws on these GPUs the same way.
++ */
++static bool
++nvk_switch_direct_draw_ok(struct nvk_cmd_buffer *cmd, uint32_t instance_count,
++                          int32_t first_vertex_or_offset, uint32_t first_instance)
++{
++   return nvk_cmd_buffer_3d_cls(cmd) < PASCAL_B &&
++          instance_count == 1 && first_vertex_or_offset == 0 &&
++          first_instance == 0 &&
++          cmd->state.gfx.render.view_mask == 0 &&
++          cmd->state.gfx.switch_draw_params_zero;
++}
++
++static uint32_t
++nvk_switch_direct_begin(void)
++{
++   uint32_t begin;
++   V_NVC197_BEGIN(begin, {
++      .primitive_id = PRIMITIVE_ID_FIRST,
++      .instance_id = INSTANCE_ID_FIRST,
++      .split_mode = SPLIT_MODE_NORMAL_BEGIN_NORMAL_END,
++      .instance_iterate_enable = false,
++   });
++   return begin;
++}
++#endif
++
+ void
+ nvk_mme_draw(struct mme_builder *b)
+ {
+@@ -4984,6 +5018,20 @@ nvk_CmdDraw(VkCommandBuffer commandBuffer,
+ 
+    nvk_cmd_flush_gfx_state(cmd);
+ 
++#ifdef HAVE_SWITCH_PLATFORM
++   if (nvk_switch_direct_draw_ok(cmd, instanceCount, firstVertex, firstInstance)) {
++      struct nv_push *p = nvk_cmd_buffer_push(cmd, 7);
++      P_MTHD(p, NV9097, BEGIN);
++      P_INLINE_DATA(p, nvk_switch_direct_begin());
++      P_MTHD(p, NV9097, SET_VERTEX_ARRAY_START);
++      P_NV9097_SET_VERTEX_ARRAY_START(p, 0);
++      P_NV9097_DRAW_VERTEX_ARRAY(p, vertexCount);
++      P_MTHD(p, NV9097, END);
++      P_INLINE_DATA(p, 0);
++      return;
++   }
++#endif
++
+    struct nv_push *p = nvk_cmd_buffer_push(cmd, 6);
+    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW));
+    P_INLINE_DATA(p, 0 /* draw_index */);
+@@ -4991,6 +5039,10 @@ nvk_CmdDraw(VkCommandBuffer commandBuffer,
+    P_INLINE_DATA(p, instanceCount);
+    P_INLINE_DATA(p, firstVertex);
+    P_INLINE_DATA(p, firstInstance);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero =
++      firstVertex == 0 && firstInstance == 0 && cmd->state.gfx.render.view_mask == 0;
++#endif
+ }
+ 
+ VKAPI_ATTR void VKAPI_CALL
+@@ -5002,6 +5054,9 @@ nvk_CmdDrawMultiEXT(VkCommandBuffer commandBuffer,
+                     uint32_t stride)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    if (unlikely(!drawCount || !pVertexInfo->vertexCount || !instanceCount))
+       return;
+@@ -5162,6 +5217,20 @@ nvk_CmdDrawIndexed(VkCommandBuffer commandBuffer,
+ 
+    nvk_cmd_flush_gfx_state(cmd);
+ 
++#ifdef HAVE_SWITCH_PLATFORM
++   if (nvk_switch_direct_draw_ok(cmd, instanceCount, vertexOffset, firstInstance)) {
++      struct nv_push *p = nvk_cmd_buffer_push(cmd, 7);
++      P_MTHD(p, NV9097, BEGIN);
++      P_INLINE_DATA(p, nvk_switch_direct_begin());
++      P_MTHD(p, NV9097, SET_INDEX_BUFFER_F);
++      P_NV9097_SET_INDEX_BUFFER_F(p, firstIndex);
++      P_NV9097_DRAW_INDEX_BUFFER(p, indexCount);
++      P_MTHD(p, NV9097, END);
++      P_INLINE_DATA(p, 0);
++      return;
++   }
++#endif
++
+    struct nv_push *p = nvk_cmd_buffer_push(cmd, 7);
+    P_1INC(p, NV9097, CALL_MME_MACRO(NVK_MME_DRAW_INDEXED));
+    P_INLINE_DATA(p, 0 /* draw_index */);
+@@ -5170,6 +5239,10 @@ nvk_CmdDrawIndexed(VkCommandBuffer commandBuffer,
+    P_INLINE_DATA(p, firstIndex);
+    P_INLINE_DATA(p, vertexOffset);
+    P_INLINE_DATA(p, firstInstance);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero =
++      vertexOffset == 0 && firstInstance == 0 && cmd->state.gfx.render.view_mask == 0;
++#endif
+ }
+ 
+ VKAPI_ATTR void VKAPI_CALL
+@@ -5182,6 +5255,9 @@ nvk_CmdDrawMultiIndexedEXT(VkCommandBuffer commandBuffer,
+                            const int32_t *pVertexOffset)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    if (unlikely(!drawCount || !pIndexInfo->indexCount || !instanceCount))
+       return;
+@@ -5249,6 +5325,9 @@ nvk_CmdDrawIndirect2KHR(VkCommandBuffer commandBuffer,
+                         const VkDrawIndirect2InfoKHR* pInfo)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+    uint64_t stride = pInfo->addressRange.stride;
+ 
+    if (unlikely(!pInfo->drawCount))
+@@ -5363,6 +5442,9 @@ nvk_CmdDrawIndexedIndirect2KHR(VkCommandBuffer commandBuffer,
+                                const VkDrawIndirect2InfoKHR* pInfo)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+    uint64_t stride = pInfo->addressRange.stride;
+ 
+    /* From the Vulkan 1.3.238 spec:
+@@ -5467,6 +5549,9 @@ nvk_CmdDrawIndirectCount2KHR(VkCommandBuffer commandBuffer,
+                              const VkDrawIndirectCount2InfoKHR* pInfo)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    /* TODO: Indirect count draw pre-Turing */
+    assert(nvk_cmd_buffer_3d_cls(cmd) >= TURING_A);
+@@ -5522,6 +5607,9 @@ nvk_CmdDrawIndexedIndirectCount2KHR(VkCommandBuffer commandBuffer,
+                                     const VkDrawIndirectCount2InfoKHR* pInfo)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    /* TODO: Indexed indirect count draw pre-Turing */
+    assert(nvk_cmd_buffer_3d_cls(cmd) >= TURING_A);
+@@ -5634,6 +5722,9 @@ nvk_CmdDrawIndirectByteCount2EXT(VkCommandBuffer commandBuffer,
+                                  uint32_t vertexStride)
+ {
+    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
++#ifdef HAVE_SWITCH_PLATFORM
++   cmd->state.gfx.switch_draw_params_zero = false;
++#endif
+ 
+    if (unlikely(!instanceCount))
+       return;
+diff --git a/src/util/os_misc.c b/src/util/os_misc.c
+index 4eb0fd98843..87d79ab39da 100644
+--- a/src/util/os_misc.c
++++ b/src/util/os_misc.c
+@@ -483,6 +483,17 @@ os_get_available_system_memory(uint64_t *size)
+    const uintptr_t heap_end = (uintptr_t)fake_heap_end;
+ 
+    if (heap_start && heap_end > heap_start) {
++      /* mallinfo walks the whole newlib heap under its lock, and VMA asks for
++       * the budget every few dozen allocations: in a game creating textures
++       * as it streams, that was several percent of the thread recording draws.
++       * A value up to 100 ms old is as good for a budget.
++       */
++      static uint64_t cached_size, cached_tick;
++      const uint64_t now = armGetSystemTick();
++      if (cached_tick && now - cached_tick < armGetSystemTickFreq() / 10) {
++         *size = cached_size;
++         return true;
++      }
+       const uint64_t heap_size = heap_end - heap_start;
+       const struct mallinfo allocator = mallinfo();
+       const uint64_t arena = MIN2((uint64_t)allocator.arena, heap_size);
+@@ -494,6 +505,8 @@ os_get_available_system_memory(uint64_t *size)
+        * Counting both also makes the value recover when BO storage is freed.
+        */
+       *size = heap_size - arena + reusable;
++      cached_size = *size;
++      cached_tick = now;
+       return true;
+    }
+ 

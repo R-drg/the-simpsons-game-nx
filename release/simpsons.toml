@@ -1,0 +1,42 @@
+# The Simpsons Game on Nintendo Switch: settings. This file sits next to
+# the_simpsons_game.nro. Every value below is the one the release was tested
+# with on a Switch. Change one at a time, and put it back if the game gets worse.
+
+# --- Renderer and frame rate -------------------------------------------------
+
+# "native" draws with the port's own Vulkan renderer. "xenos" uses the emulated
+# Xbox 360 GPU instead: more complete, but far too slow to play on a Switch.
+nx_renderer = "native"
+# The game's original 30 fps in levels as well as menus.
+gameplay_frame_rate = 30
+menu_frame_rate = 30
+# At least two 60 Hz vblanks per frame: an even 30 fps.
+nx_min_frame_vblanks = 2
+nx_pace_before_present = false
+
+# --- GPU cost ----------------------------------------------------------------
+
+# One sample per pixel; true renders multisampled targets with their samples.
+nx_msaa = false
+# Upper bound on anisotropic texture filtering (1-16). 1 turns it off: the
+# Switch GPU is the limit in busy areas, and this saves part of the scene pass.
+nx_max_anisotropy = 1
+# Depth in 32 bits per pixel instead of 64.
+nx_depth24 = true
+# Make the draws' Vulkan calls on a second thread.
+nx_record_thread = true
+# Log GPU time by render pass (one frame in 16). For measuring only.
+nx_gpu_profile = false
+
+# --- System ------------------------------------------------------------------
+
+# The core the GPU command thread runs on.
+switch_cp_core = 2
+# 0 leaves the clocks to the system (and to sys-clk, if installed). 384 or 460
+# asks for that stock handheld GPU profile; with sys-clk also setting clocks,
+# the two fought over them and the system's clock service crashed (2011-0102).
+# 30 fps needs sys-clk at CPU 1785 MHz and GPU 768 MHz (handheld); at stock
+# clocks the game runs near 19 fps and cutscene audio gets ahead of the picture.
+switch_gpu_mhz = 0
+# The log goes to logs/ next to the NRO. "info" keeps what a bug report needs.
+log_level = "info"
