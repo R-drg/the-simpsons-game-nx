@@ -33,8 +33,7 @@ nx_gpu_profile = false
 # The core the GPU command thread runs on.
 switch_cp_core = 2
 # 0 leaves the clocks to the system (and to sys-clk, if installed). 384 or 460
-# asks for that stock handheld GPU profile; with sys-clk also setting clocks,
-# the two fought over them and the system's clock service crashed (2011-0102).
+# asks for that stock handheld GPU profile.
 # 30 fps needs sys-clk at CPU 1785 MHz and GPU 768 MHz (handheld); at stock
 # clocks the game runs near 19 fps and cutscene audio gets ahead of the picture.
 switch_gpu_mhz = 0

@@ -45,9 +45,7 @@ the Album) gives homebrew much less memory and is not supported.
 > [!IMPORTANT]
 > **Clocks.** The port was tested with sys-clk at **CPU 1785 MHz and GPU 768 MHz** in handheld mode, and that is
 > what 30 FPS needs. At stock handheld clocks (CPU 1020, GPU 307) the game drops to about 19 FPS, and cutscenes fall
-> behind their audio, which keeps playing in real time. Don't change sys-clk while the game runs, and leave
-> `switch_gpu_mhz` at 0 in `simpsons.toml` when sys-clk is installed: both setting clocks at once crashes the
-> console.
+> behind their audio, which keeps playing in real time.
 
 > [!NOTE]
 > **Updating:** open the installer page again and press **Create the-simpsons-game-nx-update.zip**. It only contains
