@@ -13,6 +13,10 @@ menu_frame_rate = 30
 # At least two 60 Hz vblanks per frame: an even 30 fps.
 nx_min_frame_vblanks = 2
 nx_pace_before_present = false
+# Background work (streaming) the game may still do in a frame that is already
+# late, in ms. The game's own value is up to a whole refresh period (-1), which
+# turned 35 ms frames into 50 ms ones in busy areas such as the Springfield hub.
+late_frame_task_ms = 2.0
 
 # --- GPU cost ----------------------------------------------------------------
 
@@ -27,6 +31,14 @@ nx_depth24 = true
 nx_record_thread = true
 # Log GPU time by render pass (one frame in 16). For measuring only.
 nx_gpu_profile = false
+
+# --- Cutscenes ---------------------------------------------------------------
+
+# "ffmpeg" decodes the cutscene videos with FFmpeg's VP6 decoder. "game" uses
+# the game's own decoder, which is too slow on the Switch: the picture slows
+# down and falls behind the sound. "check" uses the game's and logs how much
+# FFmpeg's pictures differ from it, and how long each decoder takes.
+movie_decoder = "ffmpeg"
 
 # --- System ------------------------------------------------------------------
 

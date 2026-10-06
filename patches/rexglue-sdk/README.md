@@ -17,5 +17,8 @@ while read p; do git apply --directory=tools/rexglue-sdk "/path/to/patches/rexgl
     shader interpreter's vertex fetches, used to work out which vertices a draw reads;
   - performance: the game's threads are spread over the three cores the process gets, and a profiler that writes
     `logs/rex/rex_perfil.log` (thread CPU, clocks, audio) every ten seconds.
+- `0002-ffmpeg-vp6-decoder.patch`: FFmpeg's VP6 decoder in the Switch build of the SDK's FFmpeg (the decoder, the DSP
+  code it needs and their NEON versions), which the port's `src/game/src/movie_decoder.cpp` decodes the cutscenes
+  with.
 
 The changes are under the SDK's BSD-3-Clause licence, as the SDK itself.

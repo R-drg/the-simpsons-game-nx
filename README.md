@@ -44,8 +44,8 @@ the Album) gives homebrew much less memory and is not supported.
 
 > [!IMPORTANT]
 > **Clocks.** The port was tested with sys-clk at **CPU 1785 MHz and GPU 768 MHz** in handheld mode, and that is
-> what 30 FPS needs. At stock handheld clocks (CPU 1020, GPU 307) the game drops to about 19 FPS, and cutscenes fall
-> behind their audio, which keeps playing in real time. Don't change sys-clk while the game runs, and leave
+> what 30 FPS needs. At stock handheld clocks (CPU 1020, GPU 307) the game drops to about 19 FPS. Don't change
+> sys-clk while the game runs, and leave
 > `switch_gpu_mhz` at 0 in `simpsons.toml` when sys-clk is installed: both setting clocks at once crashes the
 > console.
 
@@ -83,13 +83,15 @@ play hold a locked 30 FPS. Scenes with many particles at once (Homer's burp, blo
 were not measured for this release.
 
 The port caps the game at 30 FPS and spaces the frames evenly (`gameplay_frame_rate`, `menu_frame_rate`,
-`nx_min_frame_vblanks` in `simpsons.toml`).
+`nx_min_frame_vblanks` in `simpsons.toml`). In busy areas such as the Springfield hub, where a frame takes about as
+long as 30 FPS allows, the game used to give a frame that was already late up to 16.7 ms more of background
+streaming work, which turned it into a 50 ms frame; since 1.0.1 a late frame gives it at most 2 ms
+(`late_frame_task_ms`).
 
 ## Known issues
 
 - A short hitch can happen the first time a new effect appears, while its pipeline is compiled.
 - Heavy particle scenes can dip to 26–28 FPS.
-- At clocks below the tested ones, cutscene audio runs ahead of the picture.
 
 More detail is in [docs/known-issues.md](docs/known-issues.md).
 
@@ -103,6 +105,9 @@ More detail is in [docs/known-issues.md](docs/known-issues.md).
   untiled on worker threads. Vertex data is copied only for the range each draw reads, worked out from the index
   range and the vertex shader. The game's four costliest full-screen effects use the PC port's hand-written
   replacement shaders (`tools/native-renderer/native_shaders/`), compiled into the NRO.
+- **Cutscenes decoded natively.** The story cutscenes are VP6 movies. The game's own VP6 decoder, recompiled, took a
+  whole core and could not keep up, so the picture fell behind the sound. FFmpeg's VP6 decoder decodes the same
+  packets into the same buffers instead (`src/game/src/movie_decoder.cpp`, setting `movie_decoder`).
 - **Its own graphics driver.** Vulkan runs on NVK, from the Mesa project, through
   [mesa-switch](https://github.com/danfromtico/mesa-switch), with project8-sw's changes in `patches/mesa-switch/`.
 

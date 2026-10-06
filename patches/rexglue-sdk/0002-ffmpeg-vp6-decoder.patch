@@ -1,0 +1,74 @@
+diff --git a/thirdparty/CMakeLists.txt b/thirdparty/CMakeLists.txt
+index edfe3bb8..41d7ade2 100644
+--- a/thirdparty/CMakeLists.txt
++++ b/thirdparty/CMakeLists.txt
+@@ -733,7 +733,28 @@ if(WIN32)
+     target_link_libraries(libavcodec PRIVATE bcrypt)
+ endif()
+ 
+-
++# VP6, for the Switch port's movie decoder (CONFIG_VP6_DECODER and the DSP code
++# it selects are enabled in ffmpeg-overlay/config_switch_aarch64.h).
++if(REXGLUE_PLATFORM_SWITCH)
++    target_sources(libavcodec PRIVATE
++        ${FFMPEG_DIR}/libavcodec/vp6.c
++        ${FFMPEG_DIR}/libavcodec/vp56.c
++        ${FFMPEG_DIR}/libavcodec/vp56data.c
++        ${FFMPEG_DIR}/libavcodec/vp56dsp.c
++        ${FFMPEG_DIR}/libavcodec/vp56rac.c
++        ${FFMPEG_DIR}/libavcodec/vp6dsp.c
++        ${FFMPEG_DIR}/libavcodec/vp3dsp.c
++        ${FFMPEG_DIR}/libavcodec/h264chroma.c
++        ${FFMPEG_DIR}/libavcodec/hpeldsp.c
++        ${FFMPEG_DIR}/libavcodec/huffman.c
++        ${FFMPEG_DIR}/libavcodec/videodsp.c
++        ${FFMPEG_DIR}/libavcodec/aarch64/h264chroma_init_aarch64.c
++        ${FFMPEG_DIR}/libavcodec/aarch64/h264cmc_neon.S
++        ${FFMPEG_DIR}/libavcodec/aarch64/hpeldsp_init_aarch64.c
++        ${FFMPEG_DIR}/libavcodec/aarch64/hpeldsp_neon.S
++        ${FFMPEG_DIR}/libavcodec/aarch64/videodsp_init.c
++    )
++endif()
+ 
+ # IDE folder organization
+ set_target_properties(libavutil libavcodec PROPERTIES FOLDER "FFmpeg")
+diff --git a/thirdparty/ffmpeg-overlay/codec_list.c b/thirdparty/ffmpeg-overlay/codec_list.c
+index 8f32113f..11ddd59e 100644
+--- a/thirdparty/ffmpeg-overlay/codec_list.c
++++ b/thirdparty/ffmpeg-overlay/codec_list.c
+@@ -13,5 +13,8 @@ static const AVCodec* const codec_list[] = {
+ #endif
+ #if CONFIG_XMAFRAMES_DECODER
+     &ff_xmaframes_decoder,
++#endif
++#if CONFIG_VP6_DECODER
++    &ff_vp6_decoder,
+ #endif
+     NULL};
+diff --git a/thirdparty/ffmpeg-overlay/config_switch_aarch64.h b/thirdparty/ffmpeg-overlay/config_switch_aarch64.h
+index c2a507cc..fe99aaea 100644
+--- a/thirdparty/ffmpeg-overlay/config_switch_aarch64.h
++++ b/thirdparty/ffmpeg-overlay/config_switch_aarch64.h
+@@ -14,3 +14,22 @@
+ #define HAVE_MMAP 0
+ #undef HAVE_SYSCONF
+ #define HAVE_SYSCONF 0
++
++/* The game's cutscenes are EA VP6 movies. On the Switch the game's own VP6
++ * decoder, recompiled, cannot keep up with them, so the port decodes them with
++ * FFmpeg's (see movie_decoder.cpp in the port). These are the decoder and the
++ * DSP code configure selects for it (vp6_decoder_select). */
++#undef CONFIG_VP6_DECODER
++#define CONFIG_VP6_DECODER 1
++#undef CONFIG_H264CHROMA
++#define CONFIG_H264CHROMA 1
++#undef CONFIG_HPELDSP
++#define CONFIG_HPELDSP 1
++#undef CONFIG_HUFFMAN
++#define CONFIG_HUFFMAN 1
++#undef CONFIG_VIDEODSP
++#define CONFIG_VIDEODSP 1
++#undef CONFIG_VP3DSP
++#define CONFIG_VP3DSP 1
++#undef CONFIG_VP56DSP
++#define CONFIG_VP56DSP 1

@@ -42,7 +42,8 @@ The rest of this repository is GPL-3.0 (`LICENSE`).
 
 Both are the sources the SDK in TheSimpsonsGameRecomp pins, unmodified. `patches/rexglue-sdk/0001` adds FFmpeg's
 configuration header for the Switch, `thirdparty/ffmpeg-overlay/config_switch_aarch64.h` (GPL and non-free parts
-off), and builds the libraries for the Switch in `thirdparty/CMakeLists.txt`. Everything needed to rebuild the NRO
+off), and builds the libraries for the Switch in `thirdparty/CMakeLists.txt`. `patches/rexglue-sdk/0002` enables
+FFmpeg's VP6 video decoder (LGPL, like the rest) in that build, for the cutscenes. Everything needed to rebuild the NRO
 and relink it with a modified version of either library is in this repository and
 [docs/building.md](docs/building.md).
 

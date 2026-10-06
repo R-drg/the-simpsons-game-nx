@@ -40,6 +40,7 @@ add_custom_command(
 
 add_library(simpsons_host OBJECT src/main.cpp "${SIMPSONS_NATIVE_SHADER_CPP}" src/draw_telemetry.cpp
     src/frame_pacing.cpp src/ring_wait.cpp src/subtitles.cpp src/startup_check.cpp
+    src/movie_decoder.cpp
     src/native/native_system.cpp src/native/native_renderer.cpp
     src/native/native_textures.cpp src/native/native_geometry_shaders.cpp
     "${REXSDK_DIR}/src/ui/rex_app.cpp"
@@ -53,6 +54,9 @@ target_include_directories(simpsons_host PRIVATE "${SIMPSONS_GENERATED_DIR}"
     "${REXSDK_DIR}/thirdparty/glslang"
     "${REXSDK_DIR}/thirdparty/xxHash")
 target_link_libraries(simpsons_host PRIVATE rex::runtime)
+# The SDK's FFmpeg, with the VP6 decoder of patches/rexglue-sdk/0002, decodes
+# the cutscenes (src/movie_decoder.cpp).
+target_link_libraries(simpsons_host PRIVATE libavcodec)
 target_compile_definitions(simpsons_host PRIVATE REXGLUE_BUILD_CONFIG="$<CONFIG>")
 
 add_custom_target(simpsons_switch_compile DEPENDS simpsons_recomp simpsons_host
@@ -60,6 +64,8 @@ add_custom_target(simpsons_switch_compile DEPENDS simpsons_recomp simpsons_host
 if(NOT REXGLUE_SWITCH_COMPILE_ONLY)
     add_executable(simpsons $<TARGET_OBJECTS:simpsons_host> $<TARGET_OBJECTS:simpsons_recomp>)
     rexglue_switch_configure_target(simpsons NO_ENTRY)
-    rexglue_switch_add_nro(simpsons NAME "The Simpsons Game" AUTHOR "Rodrigo Ferreira" VERSION "1.0.0"
+    # The objects of simpsons_host do not carry its link libraries.
+    target_link_libraries(simpsons PRIVATE libavcodec)
+    rexglue_switch_add_nro(simpsons NAME "The Simpsons Game" AUTHOR "Rodrigo Ferreira" VERSION "1.0.1"
         ICON "${CMAKE_CURRENT_SOURCE_DIR}/switch/icon.jpg")
 endif()
